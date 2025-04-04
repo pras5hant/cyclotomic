@@ -23,7 +23,6 @@
             transition: background 0.5s ease;
         }
 
-        /* Browser-specific styles */
         body.chrome {
             background: linear-gradient(135deg, #4285f4, #34a853, #fbbc05, #ea4335);
             background-size: 400% 400%;
@@ -126,9 +125,7 @@
 
         button {
             padding: 12px 20px;
-            cursor
-
-: pointer;
+            cursor: pointer;
             background: linear-gradient(45deg, #00ffcc, #00ccff);
             color: #1e1e2f;
             border: none;
@@ -233,6 +230,29 @@
             50% { transform: translate(var(--x), var(--y)); opacity: 0.3; }
             100% { transform: translate(0, 0); opacity: 0; }
         }
+
+        #factorDBSection {
+            margin-top: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: left;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        #factorDBSection h4 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+            color: #00ffcc;
+        }
+
+        #factorDBIframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
@@ -255,10 +275,13 @@
         </div>
         <p id="result"></p>
         <div id="recentCalculations"></div>
+        <div id="factorDBSection" class="hidden">
+            <h4>FactorDB Interface</h4>
+            <iframe id="factorDBIframe" src=""></iframe>
+        </div>
     </div>
 
     <script>
-        // Browser Detection
         function detectBrowser(userAgent) {
             const ua = userAgent.toLowerCase();
             if (ua.includes("chrome") && !ua.includes("edg")) return "chrome";
@@ -268,7 +291,6 @@
             return "other";
         }
 
-        // Device Info
         function getDeviceInfo(userAgent) {
             let device = "Unknown Device";
             if (/iPhone/i.test(userAgent)) device = "iPhone";
@@ -279,7 +301,6 @@
             return device;
         }
 
-        // Fetch IP Address
         async function getIPAddress() {
             try {
                 const response = await fetch("https://api.ipify.org?format=json");
@@ -291,12 +312,11 @@
             }
         }
 
-        // Visitor Tracking with Encryption and Netlify Function
         async function trackVisitor(calculationInput = "N/A", calculationResult = "N/A") {
             const userAgent = navigator.userAgent;
             const device = getDeviceInfo(userAgent);
             const ip = await getIPAddress();
-            const secretKey = "prashant2580-secret"; // Change this to your own key
+            const secretKey = "prashant2580-secret";
 
             const visitorInfo = {
                 time: new Date().toLocaleString(),
@@ -309,19 +329,17 @@
 
             const encryptedData = CryptoJS.AES.encrypt(JSON.stringify(visitorInfo), secretKey).toString();
 
-            // Change color based on browser
             const browser = detectBrowser(userAgent);
             document.body.className = "";
             document.body.classList.add(browser);
 
-            // Send to Netlify Function
             try {
                 const response = await fetch('/.netlify/functions/send-email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         encryptedData: encryptedData,
-                        toEmail: "tere.gmail.id@gmail.com" // Replace with your Gmail ID
+                        toEmail: "tere.gmail.id@gmail.com"
                     })
                 });
                 if (response.ok) console.log("Encrypted data sent!");
@@ -338,7 +356,7 @@
                 this.correctPassword = "cyclotomic123";
                 this.initEventListeners();
                 this.startColorChange();
-                trackVisitor(); // Track on page load
+                trackVisitor();
             }
 
             initEventListeners() {
@@ -490,10 +508,19 @@
                         this.showPasswordPrompt(() => {
                             document.getElementById('result').innerText = `R(${entry.n})_x = ${entry.result}\n(Calculated in ${entry.time}ms)`;
                             recentDiv.innerHTML = '';
+                            this.updateFactorDBSection(entry.result);
                         });
                     });
                     recentDiv.appendChild(calcDiv);
                 });
+            }
+
+            updateFactorDBSection(polynomial) {
+                const factorDBSection = document.getElementById('factorDBSection');
+                const factorDBIframe = document.getElementById('factorDBIframe');
+                const encodedPolynomial = encodeURIComponent(polynomial);
+                factorDBIframe.src = `http://factordb.com/index.php?query=${encodedPolynomial}`;
+                factorDBSection.classList.remove('hidden');
             }
 
             calculate() {
@@ -515,6 +542,7 @@
                     resultElement.innerText = `R(${n})_x = ${formattedResult}\n(Calculated in ${time}ms)`;
                     this.saveCalculation(n, result, time);
                     trackVisitor(n.toString(), `R(${n})_x = ${formattedResult}`);
+                    this.updateFactorDBSection(formattedResult);
                 } catch (error) {
                     resultElement.innerText = `Error in calculation: ${error.message}`;
                     trackVisitor(n.toString(), `Error: ${error.message}`);
@@ -522,7 +550,6 @@
             }
         }
 
-        // Create Particles
         function createParticles() {
             const container = document.getElementById('main-container');
             for (let i = 0; i < 15; i++) {
@@ -537,7 +564,6 @@
             }
         }
 
-        // Initialize
         window.onload = function() {
             const calculator = new PolynomialCalculator();
             createParticles();
