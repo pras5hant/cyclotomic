@@ -312,7 +312,7 @@
             <h4>FactorDB Interface</h4>
             <iframe id="factorDBIframe" src="https://factordb.com/index.php"></iframe>
             <div id="xValueInputSection">
-                <input type="number" id="xValueInput" placeholder="Enter x value">
+                <input type="text" id="xValueInput" placeholder="Enter x (e.g., 2, 5)">
                 <button id="calcPeriodsBtn">Calculate Periods</button>
             </div>
             <p id="factorDBFallback" style="color: #ff6666; display: none;">
@@ -409,11 +409,15 @@
                 document.getElementById('showRecentBtn').addEventListener('click', this.showRecentCalculations.bind(this));
                 document.getElementById('calcPeriodsBtn').addEventListener('click', () => this.calculatePeriods());
                 document.getElementById('xValueInput').addEventListener('input', (e) => {
-                    const xValue = parseInt(e.target.value);
-                    if (!isNaN(xValue) && this.currentPolynomial) {
-                        this.calculatePeriods(xValue);
+                    const xValues = this.parseXValues(e.target.value);
+                    if (xValues.length > 0 && this.currentPolynomial) {
+                        this.calculatePeriods(xValues);
                     }
                 });
+            }
+
+            parseXValues(input) {
+                return input.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
             }
 
             gcd(a, b) {
@@ -591,9 +595,10 @@
                 factorDBIframe.onload = async () => {
                     console.log("FactorDB iframe loaded successfully");
                     factorDBFallback.style.display = 'none';
-                    const xValue = parseInt(document.getElementById('xValueInput').value);
-                    if (!isNaN(xValue)) {
-                        await this.calculatePeriods(xValue);
+                    const xInput = document.getElementById('xValueInput').value;
+                    const xValues = this.parseXValues(xInput);
+                    if (xValues.length > 0) {
+                        await this.calculatePeriods(xValues);
                     }
                 };
                 factorDBIframe.onerror = () => {
@@ -603,32 +608,35 @@
                 factorDBSection.classList.remove('hidden');
             }
 
-            async calculatePeriods(xValue = null) {
+            async calculatePeriods(xValues = null) {
                 if (!this.currentPolynomial) {
                     document.getElementById('primePeriodsOutput').textContent = 'Please calculate a polynomial first.';
                     return;
                 }
                 
-                const xInput = xValue || parseInt(document.getElementById('xValueInput').value);
-                if (isNaN(xInput)) {
-                    document.getElementById('primePeriodsOutput').textContent = 'Please enter a valid x value.';
+                const input = xValues || this.parseXValues(document.getElementById('xValueInput').value);
+                if (input.length === 0) {
+                    document.getElementById('primePeriodsOutput').textContent = 'Please enter valid x values (e.g., 2, 5).';
                     return;
                 }
 
-                const result = this.evaluatePolynomial(this.currentPolynomial, xInput);
-                const apiUrl = `https://factordb.com/api?query=${encodeURIComponent(result.toString())}`;
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
-                console.log("Fetching FactorDB API via proxy:", proxyUrl);
-                
-                try {
-                    const factors = await this.fetchFactorsFromFactorDB(proxyUrl, result);
-                    this.displayPrimePeriods(factors, xInput);
-                } catch (error) {
-                    document.getElementById('primePeriodsOutput').textContent = 
-                        `Error fetching factors: ${error.message}\nUsing local factorization as fallback.`;
-                    const factors = this.factorize(result);
-                    this.displayPrimePeriods(factors, xInput);
+                let outputText = '';
+                for (const xValue of input) {
+                    const result = this.evaluatePolynomial(this.currentPolynomial, xValue);
+                    const apiUrl = `https://factordb.com/api?query=${encodeURIComponent(result.toString())}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
+                    console.log("Fetching FactorDB API via proxy for x =", xValue, ":", proxyUrl);
+                    
+                    try {
+                        const factors = await this.fetchFactorsFromFactorDB(proxyUrl, result);
+                        outputText += this.formatPrimePeriods(factors, xValue) + '\n\n';
+                    } catch (error) {
+                        outputText += `Error fetching factors for x = ${xValue}: ${error.message}\nUsing local factorization as fallback.\n`;
+                        const factors = this.factorize(result);
+                        outputText += this.formatPrimePeriods(factors, xValue) + '\n\n';
+                    }
                 }
+                document.getElementById('primePeriodsOutput').textContent = outputText.trim();
             }
 
             async fetchFactorsFromFactorDB(url, originalNumber) {
@@ -674,10 +682,8 @@
                 return `${p - 1n}/${(p - 1n) / period}`;
             }
 
-            displayPrimePeriods(factors, xValue) {
-                const primePeriodsOutput = document.getElementById('primePeriodsOutput');
+            formatPrimePeriods(factors, xValue) {
                 let outputText = `Factors and Periods for x = ${xValue}:\n`;
-                
                 if (factors.length === 0) {
                     outputText += 'No factors found (result is 0 or 1).';
                 } else {
@@ -689,7 +695,7 @@
                         return `${factor}: ${isPrime ? 'Prime' : 'Composite'}, Period = ${period}${fraction}`;
                     }).join('\n');
                 }
-                primePeriodsOutput.textContent = outputText;
+                return outputText;
             }
 
             calculate() {
@@ -714,9 +720,10 @@
                     trackVisitor(n.toString(), `R(${n})_x = ${formattedResult}`);
                     this.updateFactorDBSection(formattedResult);
                     
-                    const xValue = parseInt(document.getElementById('xValueInput').value);
-                    if (!isNaN(xValue)) {
-                        this.calculatePeriods(xValue);
+                    const xInput = document.getElementById('xValueInput').value;
+                    const xValues = this.parseXValues(xInput);
+                    if (xValues.length > 0) {
+                        this.calculatePeriods(xValues);
                     }
                 } catch (error) {
                     resultElement.innerText = `Error in calculation: ${error.message}`;
