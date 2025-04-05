@@ -253,6 +253,39 @@
             border: none;
             border-radius: 5px;
         }
+
+        #primePeriodsSection {
+            margin-top: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: left;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        #primePeriodsSection h4 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+            color: #ffcc00;
+        }
+
+        #primePeriodsOutput {
+            font-size: 1em;
+            color: #fff;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        #xValueInputSection {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -277,10 +310,18 @@
         <div id="recentCalculations"></div>
         <div id="factorDBSection">
             <h4>FactorDB Interface</h4>
-            <iframe id="factorDBIframe" src="https://factordb.com/index.php?query=x%2B1"></iframe>
+            <iframe id="factorDBIframe" src="https://factordb.com/index.php"></iframe>
+            <div id="xValueInputSection">
+                <input type="number" id="xValueInput" placeholder="Enter x value">
+                <button id="calcPeriodsBtn">Calculate Periods</button>
+            </div>
             <p id="factorDBFallback" style="color: #ff6666; display: none;">
-                Unable to load FactorDB. Try visiting the link directly: <a id="factorDBLink" href="https://factordb.com/index.php?query=x%2B1" target="_blank">FactorDB</a>
+                Unable to load FactorDB. Try visiting the link directly: <a id="factorDBLink" href="https://factordb.com/index.php" target="_blank">FactorDB</a>
             </p>
+        </div>
+        <div id="primePeriodsSection">
+            <h4>Prime Periods from Factors</h4>
+            <div id="primePeriodsOutput"></div>
         </div>
     </div>
 
@@ -357,6 +398,7 @@
                 this.memo = new Map();
                 this.recentCalculations = JSON.parse(localStorage.getItem('recentCalculations')) || [];
                 this.correctPassword = "cyclotomic123";
+                this.currentPolynomial = null;
                 this.initEventListeners();
                 this.startColorChange();
                 trackVisitor();
@@ -365,6 +407,13 @@
             initEventListeners() {
                 document.getElementById('calculateBtn').addEventListener('click', this.calculate.bind(this));
                 document.getElementById('showRecentBtn').addEventListener('click', this.showRecentCalculations.bind(this));
+                document.getElementById('calcPeriodsBtn').addEventListener('click', () => this.calculatePeriods());
+                document.getElementById('xValueInput').addEventListener('input', (e) => {
+                    const xValue = parseInt(e.target.value);
+                    if (!isNaN(xValue) && this.currentPolynomial) {
+                        this.calculatePeriods(xValue);
+                    }
+                });
             }
 
             gcd(a, b) {
@@ -438,11 +487,19 @@
                     const absCoeff = Math.abs(coeff);
                     let term = coeff < 0 ? "-" : terms.length ? "+" : "";
                     if (i === 0) term += absCoeff;
-                    else if (i === 1) term += absCoeff === 1 ? "x" : `${absCoeff}x`;
-                    else term += absCoeff === 1 ? `x^${i}` : `${absCoeff}x^${i}`;
+                    else if (i === 1) term += absCoeff === 1 ? "x" : `${absCoeff}*x`;
+                    else term += absCoeff === 1 ? `x^${i}` : `${absCoeff}*x^${i}`;
                     terms.push(term);
                 }
-                return terms.length ? terms.join("") : "0"; // Spaces hatao
+                return terms.length ? terms.join("") : "0";
+            }
+
+            evaluatePolynomial(coeffs, x) {
+                let result = BigInt(0);
+                for (let i = 0; i < coeffs.length; i++) {
+                    result += BigInt(Math.round(coeffs[i])) * BigInt(x) ** BigInt(i);
+                }
+                return result;
             }
 
             randomColor() {
@@ -511,6 +568,7 @@
                         this.showPasswordPrompt(() => {
                             document.getElementById('result').innerText = `R(${entry.n})_x = ${entry.result}\n(Calculated in ${entry.time}ms)`;
                             recentDiv.innerHTML = '';
+                            this.currentPolynomial = this.cyclotomicPolynomial(entry.n);
                             this.updateFactorDBSection(entry.result);
                         });
                     });
@@ -518,25 +576,120 @@
                 });
             }
 
-            updateFactorDBSection(polynomial) {
+            async updateFactorDBSection(polynomial) {
                 const factorDBSection = document.getElementById('factorDBSection');
                 const factorDBIframe = document.getElementById('factorDBIframe');
                 const factorDBFallback = document.getElementById('factorDBFallback');
                 const factorDBLink = document.getElementById('factorDBLink');
                 const encodedPolynomial = encodeURIComponent(polynomial);
                 const url = `https://factordb.com/index.php?query=${encodedPolynomial}`;
+                
                 console.log("Setting FactorDB URL:", url);
                 factorDBIframe.src = url;
                 factorDBLink.href = url;
-                factorDBIframe.onload = () => {
+                
+                factorDBIframe.onload = async () => {
                     console.log("FactorDB iframe loaded successfully");
                     factorDBFallback.style.display = 'none';
+                    const xValue = parseInt(document.getElementById('xValueInput').value);
+                    if (!isNaN(xValue)) {
+                        await this.calculatePeriods(xValue);
+                    }
                 };
                 factorDBIframe.onerror = () => {
                     console.error("Error loading FactorDB iframe");
                     factorDBFallback.style.display = 'block';
                 };
                 factorDBSection.classList.remove('hidden');
+            }
+
+            async calculatePeriods(xValue = null) {
+                if (!this.currentPolynomial) {
+                    document.getElementById('primePeriodsOutput').textContent = 'Please calculate a polynomial first.';
+                    return;
+                }
+                
+                const xInput = xValue || parseInt(document.getElementById('xValueInput').value);
+                if (isNaN(xInput)) {
+                    document.getElementById('primePeriodsOutput').textContent = 'Please enter a valid x value.';
+                    return;
+                }
+
+                const result = this.evaluatePolynomial(this.currentPolynomial, xInput);
+                const apiUrl = `https://factordb.com/api?query=${encodeURIComponent(result.toString())}`;
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
+                console.log("Fetching FactorDB API via proxy:", proxyUrl);
+                
+                try {
+                    const factors = await this.fetchFactorsFromFactorDB(proxyUrl, result);
+                    this.displayPrimePeriods(factors, xInput);
+                } catch (error) {
+                    document.getElementById('primePeriodsOutput').textContent = 
+                        `Error fetching factors: ${error.message}\nUsing local factorization as fallback.`;
+                    const factors = this.factorize(result);
+                    this.displayPrimePeriods(factors, xInput);
+                }
+            }
+
+            async fetchFactorsFromFactorDB(url, originalNumber) {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                console.log("FactorDB API response:", data);
+
+                let factors = [];
+                if (data.status === "C" || data.status === "FF" || data.status === "P") {
+                    factors = data.factors.flatMap(([factor, power]) => 
+                        Array(power).fill(BigInt(factor))
+                    );
+                }
+
+                if (factors.length === 0 || !data.factors) {
+                    console.warn("No factors found in API response, using local factorization of:", originalNumber);
+                    factors = this.factorize(originalNumber);
+                }
+
+                return factors;
+            }
+
+            factorize(n) {
+                n = BigInt(n);
+                const factors = [];
+                while (n % 2n === 0n) {
+                    factors.push(2n);
+                    n /= 2n;
+                }
+                for (let i = 3n; i <= BigInt(Math.sqrt(Number(n))); i += 2n) {
+                    while (n % i === 0n) {
+                        factors.push(i);
+                        n /= i;
+                    }
+                }
+                if (n > 1n) factors.push(n);
+                return factors;
+            }
+
+            computeFraction(p, period) {
+                return `${p - 1n}/${(p - 1n) / period}`;
+            }
+
+            displayPrimePeriods(factors, xValue) {
+                const primePeriodsOutput = document.getElementById('primePeriodsOutput');
+                let outputText = `Factors and Periods for x = ${xValue}:\n`;
+                
+                if (factors.length === 0) {
+                    outputText += 'No factors found (result is 0 or 1).';
+                } else {
+                    const uniqueFactors = [...new Set(factors)];
+                    outputText += uniqueFactors.map(factor => {
+                        const isPrime = this.isPrime(factor);
+                        const period = isPrime ? this.computePeriod(factor) : 'N/A';
+                        const fraction = isPrime && period !== 0n ? `, Fraction = ${this.computeFraction(factor, period)}` : '';
+                        return `${factor}: ${isPrime ? 'Prime' : 'Composite'}, Period = ${period}${fraction}`;
+                    }).join('\n');
+                }
+                primePeriodsOutput.textContent = outputText;
             }
 
             calculate() {
@@ -553,16 +706,123 @@
                 try {
                     const start = performance.now();
                     const result = this.cyclotomicPolynomial(n);
+                    this.currentPolynomial = result;
                     const formattedResult = this.formatPolynomial(result);
                     const time = (performance.now() - start).toFixed(2);
                     resultElement.innerText = `R(${n})_x = ${formattedResult}\n(Calculated in ${time}ms)`;
                     this.saveCalculation(n, result, time);
                     trackVisitor(n.toString(), `R(${n})_x = ${formattedResult}`);
                     this.updateFactorDBSection(formattedResult);
+                    
+                    const xValue = parseInt(document.getElementById('xValueInput').value);
+                    if (!isNaN(xValue)) {
+                        this.calculatePeriods(xValue);
+                    }
                 } catch (error) {
                     resultElement.innerText = `Error in calculation: ${error.message}`;
                     trackVisitor(n.toString(), `Error: ${error.message}`);
                 }
+            }
+
+            modPow(base, exp, mod) {
+                base = BigInt(base);
+                exp = BigInt(exp);
+                mod = BigInt(mod);
+                let result = 1n;
+                base %= mod;
+                while (exp > 0n) {
+                    if (exp & 1n) result = (result * base) % mod;
+                    base = (base * base) % mod;
+                    exp >>= 1n;
+                }
+                return result;
+            }
+
+            isPrime(n) {
+                n = BigInt(n);
+                if (n <= 1n) return false;
+                if (n <= 3n) return true;
+                if (n % 2n === 0n || n % 3n === 0n) return false;
+
+                const witnesses = [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n];
+                let d = n - 1n;
+                let s = 0n;
+                while (d % 2n === 0n) {
+                    d /= 2n;
+                    s++;
+                }
+
+                for (let a of witnesses) {
+                    if (a >= n) break;
+                    let x = this.modPow(a, d, n);
+                    if (x === 1n || x === n - 1n) continue;
+                    let isComposite = true;
+                    for (let r = 0n; r < s - 1n; r++) {
+                        x = (x * x) % n;
+                        if (x === n - 1n) {
+                            isComposite = false;
+                            break;
+                        }
+                    }
+                    if (isComposite) return false;
+                }
+                return true;
+            }
+
+            factorPartial(n, limit = 1000000n) {
+                const factors = new Map();
+                let temp = n;
+
+                while (temp % 2n === 0n) {
+                    factors.set(2n, (factors.get(2n) || 0n) + 1n);
+                    temp /= 2n;
+                }
+
+                for (let i = 3n; i <= limit && i * i <= temp; i += 2n) {
+                    while (temp % i === 0n) {
+                        factors.set(i, (factors.get(i) || 0n) + 1n);
+                        temp /= i;
+                    }
+                }
+
+                if (temp > 1n) factors.set(temp, 1n);
+                return factors;
+            }
+
+            isPrimitiveRoot(p, factors) {
+                for (const [q] of factors) {
+                    if (this.modPow(10n, (p - 1n) / q, p) === 1n) return false;
+                }
+                return true;
+            }
+
+            computePeriod(p) {
+                p = BigInt(p);
+                if (p === 2n || p === 5n) return 0n;
+
+                const n = p - 1n;
+
+                if (p < 10000n) {
+                    let d = n;
+                    const factors = this.factorPartial(n);
+                    for (const [q] of factors) {
+                        while (d % q === 0n && this.modPow(10n, d / q, p) === 1n) {
+                            d /= q;
+                        }
+                    }
+                    return d;
+                }
+
+                const factors = this.factorPartial(n);
+                if (this.isPrimitiveRoot(p, factors)) return n;
+
+                let d = n;
+                for (const [q] of factors) {
+                    while (d % q === 0n && this.modPow(10n, d / q, p) === 1n) {
+                        d /= q;
+                    }
+                }
+                return d;
             }
         }
 
